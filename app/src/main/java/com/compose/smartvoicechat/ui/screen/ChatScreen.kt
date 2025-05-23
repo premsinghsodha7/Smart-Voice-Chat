@@ -1,81 +1,47 @@
 package com.compose.smartvoicechat.ui.screen
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.*
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
+import com.compose.smartvoicechat.model.ChatMessage
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
+fun ChatScreen(viewModel: ChatViewModel) {
     val context = LocalContext.current
-    val chatMessages by viewModel.chatMessages.collectAsState()
-    val isListening by viewModel.isListening.collectAsState()
-    val isTyping by viewModel.isTyping.collectAsState()
-
-    val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-
     LaunchedEffect(Unit) {
         viewModel.initializeTTS(context)
     }
 
-    // Scroll to bottom when a new message is added
-    LaunchedEffect(chatMessages.size) {
-        coroutineScope.launch {
-            listState.animateScrollToItem(chatMessages.size)
-        }
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted ->
-            if (granted) {
-                viewModel.onMicTapped(context)
-            } else {
-                Toast.makeText(context, "Microphone permission denied", Toast.LENGTH_SHORT).show()
-            }
-        }
-    )
+    val messages by viewModel.chatMessages.collectAsState()
+    val isListening by viewModel.isListening.collectAsState()
+    val isTyping by viewModel.isTyping.collectAsState()
+    val readingMessageId by viewModel.readingMessageId.collectAsState()
 
     Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("Smart Voice Chat") })
-        },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                if (ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.RECORD_AUDIO
-                    ) == PackageManager.PERMISSION_GRANTED
-                ) {
-                    viewModel.onMicTapped(context)
-                } else {
-                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                }
-            }) {
-                Icon(
-                    imageVector = if (isListening) Icons.Default.Stop else Icons.Default.Mic,
-                    contentDescription = if (isListening) "Stop Listening" else "Start Listening"
-                )
+            FloatingActionButton(
+                onClick = { viewModel.onMicTapped(context) },
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
+                Icon(imageVector = Icons.Default.Mic, contentDescription = "Mic", tint = Color.White)
             }
         }
     ) { padding ->
@@ -83,22 +49,35 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(MaterialTheme.colorScheme.background)
         ) {
+            if (isListening) {
+                ListeningIndicator("Listening...")
+            }
+
+            if (isTyping) {
+                ListeningIndicator("AI is typing...")
+            }
+
             LazyColumn(
-                state = listState,
                 modifier = Modifier
                     .weight(1f)
+                    .fillMaxWidth()
                     .padding(8.dp),
-                reverseLayout = false
+                reverseLayout = true
             ) {
-                items(chatMessages) { message ->
-                    ChatBubble(message = message.text, isUser = message.isUser)
-                }
-
-                if (isTyping) {
-                    item {
-                        ChatBubble(message = "Typing...", isUser = false)
-                    }
+                items(messages.reversed()) { message ->
+                    ChatMessageItem(
+                        message = message,
+                        isPlaying = readingMessageId == message.id,
+                        onPlayClicked = {
+                            if (readingMessageId == message.id) {
+                                viewModel.stopReading()
+                            } else {
+                                viewModel.readMessage(message.id, message.text)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -106,24 +85,59 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
 }
 
 @Composable
-fun ChatBubble(message: String, isUser: Boolean) {
+fun ChatMessageItem(
+    message: ChatMessage,
+    isPlaying: Boolean,
+    onPlayClicked: () -> Unit
+) {
+    val alignment = if (message.isUser) Alignment.End else Alignment.Start
+    val backgroundColor = if (message.isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+    else MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(4.dp),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+            .padding(vertical = 4.dp),
+        horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
     ) {
-        Surface(
-            shape = MaterialTheme.shapes.medium,
-            color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-            tonalElevation = 4.dp
+        Box(
+            modifier = Modifier
+                .background(backgroundColor, shape = RoundedCornerShape(12.dp))
+                .padding(12.dp)
+                .widthIn(max = 280.dp)
         ) {
-            Text(
-                text = message,
-                modifier = Modifier.padding(12.dp),
-                color = if (isUser) Color.White else Color.Black,
-                textAlign = TextAlign.Start
-            )
+            Column {
+                Text(
+                    text = message.text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                IconButton(
+                    onClick = onPlayClicked,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Stop reading" else "Play reading"
+                    )
+                }
+            }
         }
     }
+}
+
+@Composable
+fun ListeningIndicator(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+            .padding(8.dp),
+        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.titleMedium
+    )
 }

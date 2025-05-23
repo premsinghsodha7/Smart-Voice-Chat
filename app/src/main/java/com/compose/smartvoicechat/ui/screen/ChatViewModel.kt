@@ -1,12 +1,12 @@
 package com.compose.smartvoicechat.ui.screen
 
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.compose.smartvoicechat.data.ChatRepository
@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.UUID
 
 class ChatViewModel(
     private val repository: ChatRepository = ChatRepository()
@@ -30,20 +31,26 @@ class ChatViewModel(
     private val _isTyping = MutableStateFlow(false)
     val isTyping: StateFlow<Boolean> = _isTyping
 
+    // For tracking which message is being read (by index or id)
+    private val _readingMessageId = MutableStateFlow<String?>(null)
+    val readingMessageId: StateFlow<String?> = _readingMessageId
+
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
-    private var ttsInitialized = false
+    private var isTtsReady = false
 
+    // Initialize TTS, call this once from your UI (pass context)
     fun initializeTTS(context: Context) {
         if (tts == null) {
-            tts = TextToSpeech(context, this)
+            tts = TextToSpeech(context.applicationContext, this)
         }
     }
 
     override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            tts?.language = Locale.US
-            ttsInitialized = true
+        isTtsReady = (status == TextToSpeech.SUCCESS)
+        Log.d("ChatViewModel", "TTS initialized: $isTtsReady")
+        if (isTtsReady) {
+            tts?.language = Locale.getDefault()
         }
     }
 
@@ -57,7 +64,7 @@ class ChatViewModel(
 
     private fun startListening(context: Context) {
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
         }
@@ -70,7 +77,6 @@ class ChatViewModel(
                 }
                 _isListening.value = false
             }
-
             override fun onReadyForSpeech(params: Bundle) {}
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
@@ -94,7 +100,10 @@ class ChatViewModel(
 
     fun sendMessageToAI(message: String) {
         viewModelScope.launch {
-            _chatMessages.update { it + ChatMessage(message, isUser = true) }
+            _chatMessages.update { current ->
+                current + ChatMessage(message, isUser = true, id = UUID.randomUUID().toString())
+            }
+
             _isTyping.value = true
 
             val response = repository.getChatResponse(message)
@@ -102,25 +111,38 @@ class ChatViewModel(
             _isTyping.value = false
 
             response.onSuccess { aiMessage ->
-                _chatMessages.update { it + ChatMessage(aiMessage, isUser = false) }
-                speak(aiMessage)
+                _chatMessages.update { current ->
+                    current + ChatMessage(aiMessage, isUser = false, id = UUID.randomUUID().toString())
+                }
             }.onFailure {
-                val errorMsg = "Failed to get response."
-                _chatMessages.update { it + ChatMessage(errorMsg, isUser = false) }
-                speak(errorMsg)
+                _chatMessages.update { current ->
+                    current + ChatMessage("Failed to get response.", isUser = false, id = UUID.randomUUID().toString())
+                }
             }
         }
     }
 
-    private fun speak(text: String) {
-        if (ttsInitialized) {
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+    fun readMessage(messageId: String, text: String) {
+        if (!isTtsReady) {
+            Log.d("ChatViewModel", "TTS not ready")
+            return
         }
+        stopReading() // Stop any ongoing speech
+        _readingMessageId.value = messageId
+        Log.d("ChatViewModel", "Reading message: $text")
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, messageId)
+    }
+
+    fun stopReading() {
+        if (tts?.isSpeaking == true) {
+            tts?.stop()
+        }
+        _readingMessageId.value = null
     }
 
     override fun onCleared() {
         super.onCleared()
-        tts?.shutdown()
         speechRecognizer?.destroy()
+        tts?.shutdown()
     }
 }
