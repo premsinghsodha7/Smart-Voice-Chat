@@ -34,6 +34,10 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    LaunchedEffect(Unit) {
+        viewModel.initializeTTS(context)
+    }
+
     // Scroll to bottom when a new message is added
     LaunchedEffect(chatMessages.size) {
         coroutineScope.launch {

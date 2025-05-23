@@ -6,13 +6,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
 class ChatRepository {
 
-    private val apiKey = "sk-YOUR_API_KEY" // <-- Replace this
+    private val apiKey = "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" // <-- Replace this
     private val apiUrl = "https://openrouter.ai/api/v1/chat/completions"
 
     suspend fun getChatResponse(userMessage: String): Result<String> = withContext(Dispatchers.IO) {

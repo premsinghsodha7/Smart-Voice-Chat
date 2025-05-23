@@ -6,7 +6,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
+import android.speech.tts.TextToSpeech
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.compose.smartvoicechat.data.ChatRepository
@@ -19,7 +19,7 @@ import java.util.Locale
 
 class ChatViewModel(
     private val repository: ChatRepository = ChatRepository()
-) : ViewModel() {
+) : ViewModel(), TextToSpeech.OnInitListener {
 
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages
@@ -31,6 +31,21 @@ class ChatViewModel(
     val isTyping: StateFlow<Boolean> = _isTyping
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private var tts: TextToSpeech? = null
+    private var ttsInitialized = false
+
+    fun initializeTTS(context: Context) {
+        if (tts == null) {
+            tts = TextToSpeech(context, this)
+        }
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            tts?.language = Locale.US
+            ttsInitialized = true
+        }
+    }
 
     fun onMicTapped(context: Context) {
         if (_isListening.value) {
@@ -63,7 +78,6 @@ class ChatViewModel(
             override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
                 _isListening.value = false
-                Log.e("SpeechRecognizer", "Error: $error")
             }
             override fun onPartialResults(partialResults: Bundle) {}
             override fun onEvent(eventType: Int, params: Bundle) {}
@@ -80,31 +94,33 @@ class ChatViewModel(
 
     fun sendMessageToAI(message: String) {
         viewModelScope.launch {
-            _chatMessages.update { current ->
-                current + ChatMessage(message, isUser = true)
-            }
-
+            _chatMessages.update { it + ChatMessage(message, isUser = true) }
             _isTyping.value = true
 
-            val result = repository.getChatResponse(message)
+            val response = repository.getChatResponse(message)
 
             _isTyping.value = false
 
-            result.onSuccess { aiReply ->
-                _chatMessages.update { current ->
-                    current + ChatMessage(aiReply, isUser = false)
-                }
-            }.onFailure { error ->
-                Log.e("ChatViewModel", "Error: ${error.message}")
-                _chatMessages.update { current ->
-                    current + ChatMessage("Error: ${error.message}", isUser = false)
-                }
+            response.onSuccess { aiMessage ->
+                _chatMessages.update { it + ChatMessage(aiMessage, isUser = false) }
+                speak(aiMessage)
+            }.onFailure {
+                val errorMsg = "Failed to get response."
+                _chatMessages.update { it + ChatMessage(errorMsg, isUser = false) }
+                speak(errorMsg)
             }
+        }
+    }
+
+    private fun speak(text: String) {
+        if (ttsInitialized) {
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
         }
     }
 
     override fun onCleared() {
         super.onCleared()
+        tts?.shutdown()
         speechRecognizer?.destroy()
     }
 }
