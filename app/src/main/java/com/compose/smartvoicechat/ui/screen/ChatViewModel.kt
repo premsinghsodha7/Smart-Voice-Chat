@@ -63,6 +63,8 @@ class ChatViewModel(
     }
 
     private fun startListening(context: Context) {
+        _chatMessages.update { emptyList() }
+        stopReading()
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
         val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -100,23 +102,24 @@ class ChatViewModel(
 
     fun sendMessageToAI(message: String) {
         viewModelScope.launch {
-            _chatMessages.update { current ->
-                current + ChatMessage(message, isUser = true, id = UUID.randomUUID().toString())
-            }
+//            _chatMessages.update { current ->
+//                listOf(ChatMessage(message, isUser = true, id = UUID.randomUUID().toString()))
+//            }
 
             _isTyping.value = true
-
             val response = repository.getChatResponse(message)
 
             _isTyping.value = false
 
             response.onSuccess { aiMessage ->
                 _chatMessages.update { current ->
-                    current + ChatMessage(aiMessage, isUser = false, id = UUID.randomUUID().toString())
+                    val item = ChatMessage(aiMessage, isUser = false, id = UUID.randomUUID().toString())
+                    readMessage(item.id, item.text)
+                    listOf(item)
                 }
             }.onFailure {
                 _chatMessages.update { current ->
-                    current + ChatMessage("Failed to get response.", isUser = false, id = UUID.randomUUID().toString())
+                    listOf(ChatMessage("Failed to get response.", isUser = false, id = UUID.randomUUID().toString()))
                 }
             }
         }
@@ -136,6 +139,7 @@ class ChatViewModel(
     fun stopReading() {
         if (tts?.isSpeaking == true) {
             tts?.stop()
+            _chatMessages.update { emptyList() }
         }
         _readingMessageId.value = null
     }
