@@ -32,8 +32,7 @@ android {
     }
 
     defaultConfig {
-        val apiKey: String? = project.findProperty("OPENAI_API_KEY") as String?
-        buildConfigField("String", "OPENAI_API_KEY", "\"${apiKey ?: ""}\"")
+        buildConfigField("String", "OPENAI_API_KEY", "YOUR_API_KEY")
     }
 
     compileOptions {
