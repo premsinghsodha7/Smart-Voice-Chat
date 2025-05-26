@@ -1,6 +1,7 @@
 package com.compose.smartvoicechat.data
 
 import android.util.Log
+import com.compose.smartvoicechat.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -11,7 +12,6 @@ import java.net.URL
 
 class ChatRepository {
 
-    private val apiKey = "YOUR_API_KEY" // <-- Replace this
     private val apiUrl = "https://openrouter.ai/api/v1/chat/completions"
 
     suspend fun getChatResponse(userMessage: String): Result<String> = withContext(Dispatchers.IO) {
@@ -20,7 +20,7 @@ class ChatRepository {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            conn.setRequestProperty("Authorization", "Bearer ${BuildConfig.OPENAI_API_KEY}")
             conn.doOutput = true
 
             val requestBody = JSONObject().apply {
