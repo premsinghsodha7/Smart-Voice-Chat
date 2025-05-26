@@ -11,8 +11,8 @@ Smart Voice Chat is a sleek AI-powered voice assistant Android application that 
 
 ## 🚀 Features
 
-- 🎤 **Tap & Hold to Speak**  
-  Natural interaction by holding the mic to speak.
+- 🎤 **Tap to Speak**  
+  Natural interaction by tapping the mic to speak.
 
 - 🤖 **AI-Powered Responses**  
   Uses OpenRouter API for real-time intelligent answers.
